@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='utf-8'?>
+<fcpxml version="1.8">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="100/3000s" />
+    <effect id="r2" name="Basic Title" uid=".../Basic Title" />
+  </resources>
+  <library>
+    <event name="Subtitles">
+      <project name="Subtitles Project">
+        <sequence duration="600s" format="r1">
+          <spine>
+            <title name="Subtitle" lane="1" offset="0/30s" duration="48/30s" start="0/30s" role="title" ref="r2">
+              <text>
+                <text-style>On a more esoteric</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="48/30s" duration="48/30s" start="48/30s" role="title" ref="r2">
+              <text>
+                <text-style>note, it's the Awey's</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="96/30s" duration="47/30s" start="96/30s" role="title" ref="r2">
+              <text>
+                <text-style>energy in mean that</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="144/30s" duration="48/30s" start="144/30s" role="title" ref="r2">
+              <text>
+                <text-style>loves to start things,</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="192/30s" duration="47/30s" start="192/30s" role="title" ref="r2">
+              <text>
+                <text-style>but sadly,</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="240/30s" duration="45/30s" start="240/30s" role="title" ref="r2">
+              <text>
+                <text-style>never ends up finishing</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="285/30s" duration="45/30s" start="285/30s" role="title" ref="r2">
+              <text>
+                <text-style>them on time, or</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="330/30s" duration="45/30s" start="330/30s" role="title" ref="r2">
+              <text>
+                <text-style>never ends up finishing</text-style>
+              </text>
+            </title>
+            <title name="Subtitle" lane="1" offset="375/30s" duration="45/30s" start="375/30s" role="title" ref="r2">
+              <text>
+                <text-style>them, be weird.</text-style>
+              </text>
+            </title>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>

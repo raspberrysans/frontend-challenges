@@ -48,9 +48,11 @@ def seconds_to_timecode(seconds, framerate):
 
 def create_fcpxml(subtitles, framerate, output_file):
     fcpxml = ET.Element("fcpxml", version="1.8")
+    
     resources = ET.SubElement(fcpxml, "resources")
-    format_elem = ET.SubElement(resources, "format", id="r1", name="FFVideoFormat1080p30", frameDuration=f"100/3000s")
-
+    ET.SubElement(resources, "format", id="r1", name="FFVideoFormat1080p30", frameDuration=f"100/{framerate*100}s")
+    ET.SubElement(resources, "effect", id="r2", name="Basic Title", uid=".../Basic Title")
+    
     library = ET.SubElement(fcpxml, "library")
     event = ET.SubElement(library, "event", name="Subtitles")
     project = ET.SubElement(event, "project", name="Subtitles Project")
@@ -60,10 +62,20 @@ def create_fcpxml(subtitles, framerate, output_file):
     for idx, sub in enumerate(subtitles):
         duration_frames = int((sub['end'] - sub['start']) * framerate)
         start_frames = int(sub['start'] * framerate)
-        duration = f"{duration_frames}/{framerate}"
-        offset = f"{start_frames}/{framerate}"
+        duration = f"{duration_frames}/{framerate}s"
+        offset = f"{start_frames}/{framerate}s"
 
-        title = ET.SubElement(spine, "title", name="Subtitle", lane="1", offset=offset, duration=duration, start=offset, role="title")
+        title = ET.SubElement(
+            spine, 
+            "title", 
+            name="Subtitle", 
+            lane="1", 
+            offset=offset, 
+            duration=duration, 
+            start=offset, 
+            role="title", 
+            ref="r2"  # <<<<<< IMPORTANT: the ref attribute
+        )
         text_elem = ET.SubElement(title, "text")
         ET.SubElement(text_elem, "text-style").text = sub['text']
 
