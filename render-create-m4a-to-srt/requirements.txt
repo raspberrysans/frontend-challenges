@@ -8,7 +8,7 @@ Werkzeug==2.3.7
 pydub==0.25.1
 SpeechRecognition==3.10.0
 
-# Whisper dependencies (CPU optimized)
+# Whisper dependencies (CPU optimized for Render)
 openai-whisper==20231117
 torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
 torchaudio==2.0.2+cpu --extra-index-url https://download.pytorch.org/whl/cpu
@@ -19,3 +19,6 @@ transformers==4.30.0
 
 # Utilities
 requests==2.31.0
+
+# Additional dependencies for better compatibility
+PyAudio==0.2.11

@@ -1,0 +1,12 @@
+# Core dependencies
+Flask==2.3.3
+Flask-CORS==4.0.0
+gunicorn==21.2.0
+Werkzeug==2.3.7
+
+# Audio processing
+pydub==0.25.1
+SpeechRecognition==3.10.0
+
+# Utilities
+requests==2.31.0 
