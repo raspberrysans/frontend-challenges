@@ -1,0 +1,15 @@
+# @format
+
+services:
+  - type: web
+    name: m4a-to-srt-converter
+    env: python
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --timeout 3600 --workers 1 --worker-class sync --max-requests 10 app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
+    autoDeploy: true

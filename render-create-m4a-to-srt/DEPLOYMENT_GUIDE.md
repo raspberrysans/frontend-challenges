@@ -1,222 +1,136 @@
 <!-- @format -->
 
-# Deployment Guide: M4A to SRT Converter
+# M4A to SRT Converter - Render Deployment Guide
 
-## Overview
+This guide will help you deploy the M4A to SRT converter on Render.
 
-You have three versions of the M4A to SRT converter:
+## Prerequisites
 
-1. **`app_working.py`** - Works locally, command-line version
-2. **`app.py`** - Full-featured web service with Whisper + SpeechRecognition
-3. **`app_simple.py`** - Simplified web service with SpeechRecognition only
+- A Render account
+- Your code pushed to a Git repository (GitHub, GitLab, etc.)
 
-## Why `app_working.py` Works Locally But `app.py` Doesn't Deploy
+## Deployment Steps
 
-### Key Differences:
+### Option 1: Using render.yaml (Recommended)
 
-1. **Dependencies**: `app_working.py` has fewer dependencies and simpler setup
-2. **FFmpeg**: Local machine has FFmpeg installed, production needs explicit setup
-3. **Whisper**: Heavy ML library that requires significant resources
-4. **Environment**: Local vs production environment differences
+1. **Connect your repository to Render:**
 
-### Main Issues with `app.py`:
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New +" and select "Web Service"
+   - Connect your Git repository
+   - Render will automatically detect the `render.yaml` file
 
-1. **Complex FFmpeg setup** - Production environments need explicit FFmpeg installation
-2. **Whisper dependencies** - Large ML models and dependencies
-3. **Resource requirements** - Whisper needs significant CPU/memory
-4. **Timeout issues** - Long processing times can cause deployment failures
+2. **Automatic deployment:**
+   - Render will use the configuration from `render.yaml`
+   - The build script will run automatically
+   - Your service will be deployed with the name "m4a-to-srt-converter"
 
-## Deployment Options
+### Option 2: Manual Configuration
 
-### Option 1: Use `app_simple.py` (Recommended for Production)
+1. **Create a new Web Service:**
 
-**Pros:**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New +" and select "Web Service"
+   - Connect your Git repository
 
-- Fewer dependencies
-- Faster deployment
-- More reliable
-- Lower resource requirements
-- Uses only SpeechRecognition (no Whisper)
+2. **Configure the service:**
 
-**Cons:**
+   - **Name:** `m4a-to-srt-converter` (or your preferred name)
+   - **Environment:** `Python 3`
+   - **Build Command:** `chmod +x build.sh && ./build.sh`
+   - **Start Command:** `gunicorn --bind 0.0.0.0:$PORT --timeout 3600 --workers 1 --worker-class sync --max-requests 10 app:app`
+   - **Health Check Path:** `/health`
 
-- Less accurate transcription than Whisper
-- Limited to 50MB files
-- Fewer features
+3. **Environment Variables:**
+   - `PYTHON_VERSION`: `3.9.16`
+   - `PORT`: `10000` (Render will override this automatically)
 
-**Deployment Steps:**
+## Build Script Details
 
-1. Rename `app_simple.py` to `app.py`
-2. Use `requirements_simple.txt` instead of `requirements.txt`
-3. Update `Procfile` to use the simplified version
+The `build.sh` script performs the following:
 
-### Option 2: Fix `app.py` (Advanced)
+1. **System Dependencies:**
 
-**Pros:**
+   - Installs Python development tools
+   - Installs audio processing libraries (portaudio, libasound2)
+   - Installs FFmpeg and related codecs
+   - Installs build tools
 
-- Full Whisper functionality
-- Better transcription accuracy
-- More features
+2. **Python Dependencies:**
 
-**Cons:**
+   - Upgrades pip
+   - Installs packages from `requirements.txt`
 
-- Complex setup
-- Higher resource requirements
-- More potential failure points
+3. **Verification:**
+   - Verifies FFmpeg installation
+   - Tests application imports
+   - Creates necessary directories
 
-**Required Changes:**
+## API Endpoints
 
-1. Use a larger Render instance (paid tier)
-2. Ensure all dependencies are properly installed
-3. Handle FFmpeg setup correctly
-4. Manage timeouts and resource limits
+Once deployed, your service will have these endpoints:
 
-## Step-by-Step Deployment
+- `GET /` - Main page
+- `GET /health` - Health check
+- `POST /upload` - Upload M4A file for conversion
+- `GET /status/<job_id>` - Check conversion status
+- `GET /download/<job_id>` - Download converted SRT file
 
-### For Simplified Version (`app_simple.py`):
+## Usage Example
 
-1. **Prepare files:**
+```bash
+# Upload a file
+curl -X POST -F "file=@audio.m4a" https://your-app-name.onrender.com/upload
 
-   ```bash
-   # Rename the simplified version
-   mv app_simple.py app.py
-   mv requirements_simple.txt requirements.txt
-   ```
+# Check status
+curl https://your-app-name.onrender.com/status/job_id_here
 
-2. **Update Procfile:**
-
-   ```
-   web: gunicorn --bind 0.0.0.0:$PORT --timeout 1800 --workers 1 app:app
-   ```
-
-3. **Deploy to Render:**
-   - Create new Web Service
-   - Connect your repository
-   - Build command: `./build.sh`
-   - Start command: `gunicorn app:app`
-
-### For Full Version (`app.py`):
-
-1. **Use paid Render tier** (at least $7/month)
-2. **Update build script** to handle dependencies better
-3. **Increase timeouts** in Procfile
-4. **Monitor resource usage**
-
-## Testing Deployment
-
-### Before Deploying:
-
-1. **Test locally:**
-
-   ```bash
-   python test_deployment.py
-   ```
-
-2. **Check dependencies:**
-
-   ```bash
-   pip install -r requirements.txt
-   python -c "import flask, pydub, speech_recognition; print('All imports successful')"
-   ```
-
-3. **Test FFmpeg:**
-   ```bash
-   ffmpeg -version
-   ```
-
-### After Deploying:
-
-1. **Check health endpoint:**
-
-   ```
-   GET https://your-app.onrender.com/health
-   ```
-
-2. **Test file upload:**
-   - Use a small M4A file (< 10MB)
-   - Check processing status
-   - Download result
+# Download result
+curl https://your-app-name.onrender.com/download/job_id_here
+```
 
 ## Troubleshooting
 
-### Common Issues:
+### Common Issues
 
-1. **Import Errors:**
+1. **Build fails with FFmpeg errors:**
 
-   - Check `requirements.txt` compatibility
-   - Ensure all dependencies are listed
-   - Use `test_deployment.py` to verify
+   - The build script includes comprehensive FFmpeg dependencies
+   - Check the build logs for specific error messages
 
-2. **FFmpeg Issues:**
+2. **Audio processing fails:**
 
-   - Verify FFmpeg is installed in build script
-   - Check PATH configuration
-   - Test with `which ffmpeg`
+   - Ensure your M4A files are valid
+   - Check that the file size is reasonable (under 50MB recommended)
 
-3. **Timeout Issues:**
+3. **Service times out:**
+   - The gunicorn configuration includes a 3600-second timeout
+   - For very long audio files, consider splitting them
 
-   - Increase Gunicorn timeout
-   - Reduce file size limits
-   - Use background processing
+### Logs
 
-4. **Memory Issues:**
-   - Upgrade to larger Render instance
-   - Reduce chunk processing limits
-   - Use simplified version
+- Check the Render dashboard for build and runtime logs
+- The application logs processing progress to stdout
 
-### Debug Commands:
+## Performance Considerations
 
-```bash
-# Check what's installed
-pip list
+- **Memory:** Audio processing can be memory-intensive
+- **CPU:** Speech recognition is CPU-intensive
+- **Timeout:** Long audio files may hit timeout limits
+- **Concurrent requests:** Limited to 1 worker for stability
 
-# Test FFmpeg
-ffmpeg -version
+## Security Notes
 
-# Test Whisper
-whisper --help
+- Files are stored temporarily and cleaned up automatically
+- No persistent storage is used
+- CORS is enabled for web access
+- File uploads are validated for M4A format
 
-# Check environment
-echo $PATH
-which ffmpeg
-which whisper
-```
+## Support
 
-## Recommendations
+If you encounter issues:
 
-### For Quick Deployment:
-
-Use `app_simple.py` - it's more reliable and easier to deploy.
-
-### For Best Quality:
-
-Use `app.py` with a paid Render tier and proper resource allocation.
-
-### For Development:
-
-Start with `app_simple.py`, then upgrade to `app.py` once you have a stable deployment.
-
-## File Structure for Deployment
-
-```
-render-create-m4a-to-srt/
-├── app.py                    # Main application (rename from app_simple.py)
-├── requirements.txt          # Dependencies (rename from requirements_simple.txt)
-├── build.sh                  # Build script
-├── Procfile                  # Process definition
-├── test_deployment.py        # Testing script
-└── README.md                 # Documentation
-```
-
-## Environment Variables
-
-- `PORT`: Set by Render automatically
-- `PYTHONPATH`: May need to be set for imports
-- `PATH`: Should include FFmpeg location
-
-## Monitoring
-
-- Check Render logs for errors
-- Monitor resource usage
-- Test endpoints regularly
-- Keep track of processing times
+1. Check the Render build logs
+2. Verify your M4A files are valid
+3. Ensure your repository contains all necessary files
+4. Check that the build script has execute permissions

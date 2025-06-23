@@ -1,18 +1,17 @@
 #!/bin/bash
 # Build script for Render deployment
+# This script sets up the environment for the M4A to SRT converter
 
 set -e  # Exit on any error
 
-echo "🚀 Starting build process..."
+echo "🚀 Starting build process for M4A to SRT Converter..."
 
-# Disable colors and interactive prompts
-export DEBIAN_FRONTEND=noninteractive
-export NO_COLOR=1
-export TERM=dumb
+# Update package lists
+echo "📦 Updating package lists..."
+apt-get update -qq
 
 # Install system dependencies
-echo "📦 Installing system dependencies..."
-apt-get update -qq
+echo "🔧 Installing system dependencies..."
 apt-get install -y -qq \
     python3-dev \
     python3-pip \
@@ -21,52 +20,40 @@ apt-get install -y -qq \
     portaudio19-dev \
     libportaudio2 \
     libportaudiocpp0 \
-    ffmpeg
+    ffmpeg \
+    libavcodec-extra \
+    libavformat-dev \
+    libavutil-dev \
+    libswresample-dev \
+    libswscale-dev \
+    pkg-config
+
+# Verify FFmpeg installation
+echo "🎬 Verifying FFmpeg installation..."
+ffmpeg -version | head -n 1
+ffprobe -version | head -n 1
+
+# Upgrade pip
+echo "🐍 Upgrading pip..."
+python -m pip install --upgrade pip
 
 # Install Python packages
-echo "🐍 Installing Python packages..."
-python -m pip install --upgrade pip
+echo "📚 Installing Python packages..."
 pip install -r requirements.txt
 
-# Download ffmpeg binary as backup
-echo "🎬 Setting up FFmpeg..."
-mkdir -p ~/bin
-cd ~/bin
+# Create necessary directories
+echo "📁 Creating necessary directories..."
+mkdir -p /tmp/audio_uploads
+mkdir -p /tmp/audio_processing
 
-# Download ffmpeg
-python3 << 'EOF'
-import urllib.request
-import tarfile
-import os
-import sys
+# Set proper permissions
+echo "🔐 Setting permissions..."
+chmod 755 /tmp/audio_uploads
+chmod 755 /tmp/audio_processing
 
-print("Downloading ffmpeg...")
-try:
-    url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-    urllib.request.urlretrieve(url, "ffmpeg.tar.xz")
-    
-    print("Extracting ffmpeg...")
-    with tarfile.open("ffmpeg.tar.xz", "r:xz") as tar:
-        # Extract only ffmpeg and ffprobe
-        for member in tar.getmembers():
-            if member.name.endswith('/ffmpeg') or member.name.endswith('/ffprobe'):
-                member.name = os.path.basename(member.name)
-                tar.extract(member, ".")
-    
-    # Make executable
-    os.chmod("ffmpeg", 0o755)
-    os.chmod("ffprobe", 0o755)
-    
-    # Clean up
-    os.remove("ffmpeg.tar.xz")
-    print("FFmpeg setup complete!")
-except Exception as e:
-    print(f"FFmpeg setup failed: {e}")
-    sys.exit(1)
-EOF
-
-# Test the setup
-echo "🧪 Testing setup..."
-python test_deployment.py
+# Test the application
+echo "🧪 Testing application startup..."
+python -c "import app; print('✅ Application imports successfully')"
 
 echo "✅ Build completed successfully!"
+echo "🎉 Your M4A to SRT converter is ready for deployment!"
