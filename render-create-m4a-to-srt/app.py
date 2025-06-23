@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-M4A to SRT Converter - Railway Deployment
+M4A to SRT Converter - Render Deployment
 Flask web service for converting M4A audio files to SRT subtitles
 """
 
@@ -21,6 +21,26 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
+
+# Configure ffmpeg path for Render
+home_dir = os.path.expanduser("~")
+ffmpeg_path = os.path.join(home_dir, "bin", "ffmpeg")
+ffprobe_path = os.path.join(home_dir, "bin", "ffprobe")
+
+# Add to PATH
+current_path = os.environ.get('PATH', '')
+bin_path = os.path.join(home_dir, "bin")
+if bin_path not in current_path:
+    os.environ['PATH'] = f"{bin_path}:{current_path}"
+
+# Configure pydub to use our ffmpeg
+if os.path.exists(ffmpeg_path):
+    AudioSegment.converter = ffmpeg_path
+    AudioSegment.ffmpeg = ffmpeg_path
+    AudioSegment.ffprobe = ffprobe_path
+    print(f"FFmpeg configured at: {ffmpeg_path}")
+else:
+    print("Warning: FFmpeg not found, using system default")
 
 # Store processing status
 processing_status = {}
@@ -47,15 +67,22 @@ class M4AToSRTConverter:
         print("Transcribing audio with Whisper...")
         
         try:
+            # Set up environment for whisper command
+            env = os.environ.copy()
+            env['PATH'] = f"{os.path.join(os.path.expanduser('~'), 'bin')}:{env.get('PATH', '')}"
+            
             # Try to use whisper command line tool with word-level timestamps
             temp_dir = tempfile.mkdtemp()
+            
+            # Run whisper with proper environment
             result = subprocess.run([
                 'whisper', audio_path, 
                 '--model', 'base',
                 '--output_format', 'json',
                 '--word_timestamps', 'True',
-                '--output_dir', temp_dir
-            ], capture_output=True, text=True, check=True, timeout=1800)  # 30 min timeout
+                '--output_dir', temp_dir,
+                '--language', 'auto'
+            ], capture_output=True, text=True, check=True, timeout=1800, env=env)
             
             # Find the output JSON file
             base_name = os.path.splitext(os.path.basename(audio_path))[0]
@@ -96,8 +123,9 @@ class M4AToSRTConverter:
                 
                 return words_with_timing
                 
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            print("Whisper not found or failed, falling back to SpeechRecognition...")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            print(f"Whisper failed: {e}")
+            print("Falling back to SpeechRecognition...")
             return self.transcribe_audio_fallback(audio_path)
     
     def transcribe_audio_fallback(self, wav_path):
