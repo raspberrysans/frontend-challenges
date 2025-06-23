@@ -22,34 +22,42 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 CORS(app)
 
-# Configure ffmpeg path for Render
-home_dir = os.path.expanduser("~")
-ffmpeg_path = os.path.join(home_dir, "bin", "ffmpeg")
-ffprobe_path = os.path.join(home_dir, "bin", "ffprobe")
-
-# Add to PATH
-current_path = os.environ.get('PATH', '')
-bin_path = os.path.join(home_dir, "bin")
-if bin_path not in current_path:
-    os.environ['PATH'] = f"{bin_path}:{current_path}"
-
-# Configure pydub to use our ffmpeg
-if os.path.exists(ffmpeg_path):
-    AudioSegment.converter = ffmpeg_path
-    AudioSegment.ffmpeg = ffmpeg_path
-    AudioSegment.ffprobe = ffprobe_path
-    print(f"✅ FFmpeg configured at: {ffmpeg_path}")
-else:
-    print("⚠️ Warning: FFmpeg not found at expected location, trying system default")
-    # Try to find ffmpeg in system PATH
-    import shutil
-    system_ffmpeg = shutil.which('ffmpeg')
-    if system_ffmpeg:
-        print(f"✅ Found system FFmpeg at: {system_ffmpeg}")
-        AudioSegment.converter = system_ffmpeg
-        AudioSegment.ffmpeg = system_ffmpeg
+# Simplified FFmpeg configuration for Render
+def setup_ffmpeg():
+    """Setup FFmpeg paths for Render deployment"""
+    home_dir = os.path.expanduser("~")
+    ffmpeg_path = os.path.join(home_dir, "bin", "ffmpeg")
+    ffprobe_path = os.path.join(home_dir, "bin", "ffprobe")
+    
+    # Add bin directory to PATH
+    bin_path = os.path.join(home_dir, "bin")
+    current_path = os.environ.get('PATH', '')
+    if bin_path not in current_path:
+        os.environ['PATH'] = f"{bin_path}:{current_path}"
+    
+    # Configure pydub to use our ffmpeg if available
+    if os.path.exists(ffmpeg_path):
+        AudioSegment.converter = ffmpeg_path
+        AudioSegment.ffmpeg = ffmpeg_path
+        AudioSegment.ffprobe = ffprobe_path
+        print(f"✅ FFmpeg configured at: {ffmpeg_path}")
+        return True
     else:
-        print("❌ No FFmpeg found - audio conversion may fail")
+        print("⚠️ Warning: FFmpeg not found at expected location, trying system default")
+        # Try to find ffmpeg in system PATH
+        import shutil
+        system_ffmpeg = shutil.which('ffmpeg')
+        if system_ffmpeg:
+            print(f"✅ Found system FFmpeg at: {system_ffmpeg}")
+            AudioSegment.converter = system_ffmpeg
+            AudioSegment.ffmpeg = system_ffmpeg
+            return True
+        else:
+            print("❌ No FFmpeg found - audio conversion may fail")
+            return False
+
+# Initialize FFmpeg
+ffmpeg_available = setup_ffmpeg()
 
 # Store processing status
 processing_status = {}
@@ -64,12 +72,16 @@ class M4AToSRTConverter:
     def convert_m4a_to_wav(self, m4a_path):
         """Convert M4A to WAV for speech recognition"""
         print("Converting M4A to WAV...")
-        audio = AudioSegment.from_file(m4a_path, format="m4a")
-        
-        # Create temporary WAV file
-        temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        audio.export(temp_wav.name, format="wav")
-        return temp_wav.name, len(audio) / 1000.0
+        try:
+            audio = AudioSegment.from_file(m4a_path, format="m4a")
+            
+            # Create temporary WAV file
+            temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            audio.export(temp_wav.name, format="wav")
+            return temp_wav.name, len(audio) / 1000.0
+        except Exception as e:
+            print(f"Error converting M4A to WAV: {e}")
+            raise
     
     def transcribe_with_whisper(self, audio_path):
         """Use OpenAI Whisper for transcription with accurate timestamps"""
@@ -78,12 +90,14 @@ class M4AToSRTConverter:
         try:
             # Set up environment for whisper command
             env = os.environ.copy()
-            env['PATH'] = f"{os.path.join(os.path.expanduser('~'), 'bin')}:{env.get('PATH', '')}"
+            home_dir = os.path.expanduser("~")
+            bin_path = os.path.join(home_dir, "bin")
+            env['PATH'] = f"{bin_path}:{env.get('PATH', '')}"
             
             # Try to use whisper command line tool with word-level timestamps
             temp_dir = tempfile.mkdtemp()
             
-            # Run whisper with proper environment
+            # Run whisper with proper environment and shorter timeout
             result = subprocess.run([
                 'whisper', audio_path, 
                 '--model', 'base',
@@ -91,7 +105,7 @@ class M4AToSRTConverter:
                 '--word_timestamps', 'True',
                 '--output_dir', temp_dir,
                 '--language', 'auto'
-            ], capture_output=True, text=True, check=True, timeout=1800, env=env)
+            ], capture_output=True, text=True, check=True, timeout=900, env=env)  # 15 min timeout
             
             # Find the output JSON file
             base_name = os.path.splitext(os.path.basename(audio_path))[0]
@@ -163,7 +177,7 @@ class M4AToSRTConverter:
                 print(f"Processing chunk {i+1}/{len(chunks)}")
                 
                 # Limit number of chunks to prevent excessive processing time
-                if i > 20:  # Reduced for Render
+                if i > 15:  # Reduced for Render
                     break
                 
                 chunk_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
