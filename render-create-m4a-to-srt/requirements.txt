@@ -10,3 +10,4 @@ SpeechRecognition==3.10.0
 
 # Utilities
 requests==2.31.0 
+aifc
