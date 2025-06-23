@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-M4A to SRT Converter - Simplified Production Version
+M4A to SRT Converter - Render Deployment
 Flask web service for converting M4A audio files to SRT subtitles
 """
 
-from flask import Flask, request, Response, jsonify
+from flask import Flask, request, Response, send_file, jsonify
 from flask_cors import CORS
 import os
 import tempfile
@@ -22,13 +22,51 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 CORS(app)
 
+# Simplified FFmpeg configuration for Render
+def setup_ffmpeg():
+    """Setup FFmpeg paths for Render deployment"""
+    home_dir = os.path.expanduser("~")
+    ffmpeg_path = os.path.join(home_dir, "bin", "ffmpeg")
+    ffprobe_path = os.path.join(home_dir, "bin", "ffprobe")
+    
+    # Add bin directory to PATH
+    bin_path = os.path.join(home_dir, "bin")
+    current_path = os.environ.get('PATH', '')
+    if bin_path not in current_path:
+        os.environ['PATH'] = f"{bin_path}:{current_path}"
+    
+    # Configure pydub to use our ffmpeg if available
+    if os.path.exists(ffmpeg_path):
+        AudioSegment.converter = ffmpeg_path
+        AudioSegment.ffmpeg = ffmpeg_path
+        AudioSegment.ffprobe = ffprobe_path
+        print(f"✅ FFmpeg configured at: {ffmpeg_path}")
+        return True
+    else:
+        print("⚠️ Warning: FFmpeg not found at expected location, trying system default")
+        # Try to find ffmpeg in system PATH
+        import shutil
+        system_ffmpeg = shutil.which('ffmpeg')
+        if system_ffmpeg:
+            print(f"✅ Found system FFmpeg at: {system_ffmpeg}")
+            AudioSegment.converter = system_ffmpeg
+            AudioSegment.ffmpeg = system_ffmpeg
+            return True
+        else:
+            print("❌ No FFmpeg found - audio conversion may fail")
+            return False
+
+# Initialize FFmpeg
+ffmpeg_available = setup_ffmpeg()
+
 # Store processing status
 processing_status = {}
 completed_files = {}
 
-class SimpleM4AToSRTConverter:
-    def __init__(self, max_words=8):
+class M4AToSRTConverter:
+    def __init__(self, max_words=8, framerate=25):
         self.max_words = max_words
+        self.framerate = framerate
         self.recognizer = sr.Recognizer()
         
     def convert_m4a_to_wav(self, m4a_path):
@@ -45,8 +83,76 @@ class SimpleM4AToSRTConverter:
             print(f"Error converting M4A to WAV: {e}")
             raise
     
-    def transcribe_audio(self, wav_path):
-        """Transcribe audio using SpeechRecognition (simplified)"""
+    def transcribe_with_whisper(self, audio_path):
+        """Use OpenAI Whisper for transcription with accurate timestamps"""
+        print("Transcribing audio with Whisper...")
+        
+        try:
+            # Set up environment for whisper command
+            env = os.environ.copy()
+            home_dir = os.path.expanduser("~")
+            bin_path = os.path.join(home_dir, "bin")
+            env['PATH'] = f"{bin_path}:{env.get('PATH', '')}"
+            
+            # Try to use whisper command line tool with word-level timestamps
+            temp_dir = tempfile.mkdtemp()
+            
+            # Run whisper with proper environment and shorter timeout
+            result = subprocess.run([
+                'whisper', audio_path, 
+                '--model', 'base',
+                '--output_format', 'json',
+                '--word_timestamps', 'True',
+                '--output_dir', temp_dir,
+                '--language', 'auto'
+            ], capture_output=True, text=True, check=True, timeout=900, env=env)  # 15 min timeout
+            
+            # Find the output JSON file
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            json_path = os.path.join(temp_dir, f"{base_name}.json")
+            
+            if os.path.exists(json_path):
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    whisper_result = json.load(f)
+                
+                # Extract word-level timestamps if available
+                words_with_timing = []
+                for segment in whisper_result.get('segments', []):
+                    if 'words' in segment:
+                        for word_info in segment['words']:
+                            words_with_timing.append({
+                                'word': word_info['word'].strip(),
+                                'start': word_info['start'],
+                                'end': word_info['end']
+                            })
+                    else:
+                        # Fallback to segment-level timing
+                        segment_words = segment['text'].strip().split()
+                        if segment_words:
+                            word_duration = (segment['end'] - segment['start']) / len(segment_words)
+                            for i, word in enumerate(segment_words):
+                                words_with_timing.append({
+                                    'word': word,
+                                    'start': segment['start'] + (i * word_duration),
+                                    'end': segment['start'] + ((i + 1) * word_duration)
+                                })
+                
+                # Clean up
+                try:
+                    os.unlink(json_path)
+                    os.rmdir(temp_dir)
+                except:
+                    pass
+                
+                return words_with_timing
+                
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            print(f"Whisper failed: {e}")
+            print("Falling back to SpeechRecognition...")
+            return self.transcribe_audio_fallback(audio_path)
+    
+    def transcribe_audio_fallback(self, wav_path):
+        """Fallback transcription using SpeechRecognition"""
         print("Transcribing audio with SpeechRecognition...")
         
         try:
@@ -71,7 +177,7 @@ class SimpleM4AToSRTConverter:
                 print(f"Processing chunk {i+1}/{len(chunks)}")
                 
                 # Limit number of chunks to prevent excessive processing time
-                if i > 10:  # Reduced for production
+                if i > 15:  # Reduced for Render
                     break
                 
                 chunk_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -113,7 +219,7 @@ class SimpleM4AToSRTConverter:
             return words_with_timing
             
         except Exception as e:
-            print(f"Transcription failed: {e}")
+            print(f"Fallback transcription failed: {e}")
             return []
     
     def group_words_into_subtitles(self, words_with_timing):
@@ -181,21 +287,21 @@ class SimpleM4AToSRTConverter:
         
         return srt_content
 
-def process_audio(job_id, file_path, max_words):
+def process_audio(job_id, file_path, max_words, framerate):
     """Process audio file in background thread"""
     global processing_status, completed_files
     
     try:
         processing_status[job_id] = {"status": "processing", "progress": "Starting conversion..."}
         
-        converter = SimpleM4AToSRTConverter(max_words=max_words)
+        converter = M4AToSRTConverter(max_words=max_words, framerate=framerate)
         
         processing_status[job_id]["progress"] = "Converting audio format..."
         temp_wav_path, duration = converter.convert_m4a_to_wav(file_path)
         
         try:
             processing_status[job_id]["progress"] = "Transcribing audio..."
-            words_with_timing = converter.transcribe_audio(temp_wav_path)
+            words_with_timing = converter.transcribe_with_whisper(file_path)
             
             if not words_with_timing:
                 processing_status[job_id] = {"status": "error", "message": "No speech detected in audio file"}
@@ -240,7 +346,7 @@ def process_audio(job_id, file_path, max_words):
 @app.route('/')
 def index():
     return '''
-    <h1>🎵 M4A to SRT Converter API (Simplified)</h1>
+    <h1>🎵 M4A to SRT Converter API</h1>
     <p>Convert M4A audio files to SRT subtitle format</p>
     <div style="margin: 20px 0;">
         <h3>Available Endpoints:</h3>
@@ -252,8 +358,8 @@ def index():
         </ul>
     </div>
     <div style="margin-top: 30px; font-size: 0.9em; color: #666;">
-        <p>Max file size: 50MB | Supported format: M4A</p>
-        <p>Uses SpeechRecognition for transcription</p>
+        <p>Max file size: 100MB | Supported format: M4A</p>
+        <p>Processing time varies based on audio length</p>
     </div>
     '''
 
@@ -261,7 +367,7 @@ def index():
 def health_check():
     return jsonify({
         'status': 'healthy',
-        'service': 'M4A to SRT Converter (Simplified)',
+        'service': 'M4A to SRT Converter',
         'timestamp': time.time()
     })
 
@@ -274,20 +380,24 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    # Check file size (limit to 50MB for simplified version)
+    # Check file size (limit to 100MB for free tier)
     file.seek(0, 2)  # Seek to end
     file_size = file.tell()
     file.seek(0)  # Reset to beginning
     
-    if file_size > 50 * 1024 * 1024:  # 50MB limit
-        return jsonify({'error': 'File size exceeds 50MB limit'}), 400
+    if file_size > 100 * 1024 * 1024:  # 100MB limit
+        return jsonify({'error': 'File size exceeds 100MB limit'}), 400
     
     # Get parameters
     max_words = int(request.form.get('max_words', 8))
+    framerate = float(request.form.get('framerate', 25.0))
     
     # Validate parameters
     if max_words < 1 or max_words > 20:
         return jsonify({'error': 'max_words must be between 1 and 20'}), 400
+    
+    if framerate <= 0 or framerate > 120:
+        return jsonify({'error': 'framerate must be between 0 and 120'}), 400
     
     # Check file extension
     if not file.filename.lower().endswith('.m4a'):
@@ -306,7 +416,7 @@ def upload_file():
     # Start background processing
     thread = threading.Thread(
         target=process_audio, 
-        args=(job_id, temp_path, max_words)
+        args=(job_id, temp_path, max_words, framerate)
     )
     thread.daemon = True
     thread.start()
@@ -369,4 +479,4 @@ cleanup_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    app.run(host='0.0.0.0', port=port, debug=False)
