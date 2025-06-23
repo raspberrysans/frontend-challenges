@@ -1,0 +1,19 @@
+# @format
+
+services:
+  - type: web
+    name: m4a-to-srt-converter
+    runtime: python3
+    buildCommand: './build.sh'
+    startCommand: 'gunicorn --bind 0.0.0.0:$PORT --timeout 1800 --workers 2 --worker-class sync app:app'
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.4
+      - key: PYTHONUNBUFFERED
+        value: 1
+    disk:
+      name: temp-storage
+      mountPath: /tmp
+      sizeGB: 1
