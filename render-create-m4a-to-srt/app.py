@@ -38,9 +38,18 @@ if os.path.exists(ffmpeg_path):
     AudioSegment.converter = ffmpeg_path
     AudioSegment.ffmpeg = ffmpeg_path
     AudioSegment.ffprobe = ffprobe_path
-    print(f"FFmpeg configured at: {ffmpeg_path}")
+    print(f"✅ FFmpeg configured at: {ffmpeg_path}")
 else:
-    print("Warning: FFmpeg not found, using system default")
+    print("⚠️ Warning: FFmpeg not found at expected location, trying system default")
+    # Try to find ffmpeg in system PATH
+    import shutil
+    system_ffmpeg = shutil.which('ffmpeg')
+    if system_ffmpeg:
+        print(f"✅ Found system FFmpeg at: {system_ffmpeg}")
+        AudioSegment.converter = system_ffmpeg
+        AudioSegment.ffmpeg = system_ffmpeg
+    else:
+        print("❌ No FFmpeg found - audio conversion may fail")
 
 # Store processing status
 processing_status = {}

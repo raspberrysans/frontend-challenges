@@ -1,36 +1,42 @@
-#!/usr/bin/env bash
-# build.sh - Render build script with proper ffmpeg setup
+#!/bin/bash
+# Minimal build script for Render
 
-set -o errexit  # exit on error
+# Disable colors and interactive prompts
+export DEBIAN_FRONTEND=noninteractive
+export NO_COLOR=1
+export TERM=dumb
 
-echo "Starting build process..."
-
-# Upgrade pip first
-pip install --upgrade pip
-
-# Install Python dependencies
-echo "Installing Python dependencies..."
+# Install Python packages
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# Create bin directory for ffmpeg
-echo "Setting up ffmpeg..."
-mkdir -p $HOME/bin
+# Download ffmpeg binary
+mkdir -p ~/bin
+cd ~/bin
 
-# Download and install static ffmpeg binary
-cd $HOME/bin
-wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-tar -xf ffmpeg-release-amd64-static.tar.xz --strip-components=1
-rm ffmpeg-release-amd64-static.tar.xz
+# Download ffmpeg
+python3 << 'EOF'
+import urllib.request
+import tarfile
+import os
 
-# Make binaries executable
-chmod +x ffmpeg ffprobe
+print("Downloading ffmpeg...")
+url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+urllib.request.urlretrieve(url, "ffmpeg.tar.xz")
 
-# Add to PATH for current session
-export PATH="$HOME/bin:$PATH"
+print("Extracting ffmpeg...")
+with tarfile.open("ffmpeg.tar.xz", "r:xz") as tar:
+    # Extract only ffmpeg and ffprobe
+    for member in tar.getmembers():
+        if member.name.endswith('/ffmpeg') or member.name.endswith('/ffprobe'):
+            member.name = os.path.basename(member.name)
+            tar.extract(member, ".")
 
-# Verify ffmpeg installation
-echo "FFmpeg version:"
-./ffmpeg -version | head -1
+# Make executable
+os.chmod("ffmpeg", 0o755)
+os.chmod("ffprobe", 0o755)
 
-echo "Build completed successfully!"
-echo "FFmpeg installed at: $HOME/bin/ffmpeg"
+# Clean up
+os.remove("ffmpeg.tar.xz")
+print("FFmpeg setup complete!")
+EOF
