@@ -6,32 +6,31 @@ set -e  # Exit on any error
 
 echo "🚀 Starting build process for M4A to SRT Converter..."
 
-# Update package lists
-echo "📦 Updating package lists..."
-apt-get update -qq
+# Check if we're in a containerized environment
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+    echo "📦 Containerized environment detected"
+    echo "ℹ️ System packages should be pre-installed by the container"
+else
+    echo "📦 Non-containerized environment"
+    echo "ℹ️ System packages may need to be installed separately"
+fi
 
-# Install system dependencies
-echo "🔧 Installing system dependencies..."
-apt-get install -y -qq \
-    python3-dev \
-    python3-pip \
-    build-essential \
-    libasound2-dev \
-    portaudio19-dev \
-    libportaudio2 \
-    libportaudiocpp0 \
-    ffmpeg \
-    libavcodec-extra \
-    libavformat-dev \
-    libavutil-dev \
-    libswresample-dev \
-    libswscale-dev \
-    pkg-config
+# Check for FFmpeg (may be pre-installed)
+echo "🎬 Checking FFmpeg availability..."
+if command -v ffmpeg &> /dev/null; then
+    echo "✅ FFmpeg found:"
+    ffmpeg -version | head -n 1
+else
+    echo "⚠️ FFmpeg not found in PATH"
+    echo "   This may be installed by the container or available via other means"
+fi
 
-# Verify FFmpeg installation
-echo "🎬 Verifying FFmpeg installation..."
-ffmpeg -version | head -n 1
-ffprobe -version | head -n 1
+if command -v ffprobe &> /dev/null; then
+    echo "✅ FFprobe found:"
+    ffprobe -version | head -n 1
+else
+    echo "⚠️ FFprobe not found in PATH"
+fi
 
 # Upgrade pip
 echo "🐍 Upgrading pip..."
@@ -54,6 +53,15 @@ chmod 755 /tmp/audio_processing
 # Test the application
 echo "🧪 Testing application startup..."
 python -c "import app; print('✅ Application imports successfully')"
+
+# Test Whisper installation
+echo "🎤 Testing Whisper installation..."
+if command -v whisper &> /dev/null; then
+    echo "✅ Whisper CLI found"
+    whisper --help | head -n 3
+else
+    echo "⚠️ Whisper CLI not found, but Python package should be available"
+fi
 
 echo "✅ Build completed successfully!"
 echo "🎉 Your M4A to SRT converter is ready for deployment!"

@@ -35,8 +35,8 @@ A FastAPI web service for converting M4A audio files to SRT subtitle format usin
 
    - Connect your Git repository
    - Choose Python as the runtime
-   - Set build command: `./build.sh`
-   - Set start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+   - Set build command: `chmod +x build.sh && ./build.sh`
+   - Set start command: `uvicorn app:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 3600`
 
 2. **Environment Variables** (optional)
 
@@ -46,38 +46,74 @@ A FastAPI web service for converting M4A audio files to SRT subtitle format usin
    - Render will automatically build and deploy your service
    - The build script will install all dependencies and set up FFmpeg
 
+### Alternative Deployment Methods
+
+#### Option 1: Using Docker (Recommended)
+
+If you encounter read-only filesystem issues, use the provided Dockerfile:
+
+1. **Create a new Web Service on Render**
+
+   - Connect your Git repository
+   - Choose **Docker** as the runtime
+   - Render will automatically detect and use the `Dockerfile`
+
+2. **Benefits of Docker deployment:**
+   - Explicit system dependency installation
+   - Consistent environment across deployments
+   - No read-only filesystem issues
+
+#### Option 2: Manual System Dependencies
+
+If using Python runtime, ensure these system packages are available:
+
+- `ffmpeg`
+- `ffprobe`
+- `build-essential`
+
 ### Build Process
 
 The `build.sh` script performs the following:
 
-1. Installs system dependencies (FFmpeg, audio libraries)
-2. Installs Python packages from `requirements.txt`
-3. Downloads and configures FFmpeg binary
-4. Runs deployment tests
+1. Checks for containerized environment
+2. Verifies FFmpeg availability
+3. Installs Python packages from `requirements.txt`
+4. Creates necessary directories
+5. Tests application startup
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Import Errors**
+1. **Read-only Filesystem Error**
+
+   ```
+   E: List directory /var/lib/apt/lists/partial is missing. - Acquire (30: Read-only file system)
+   ```
+
+   **Solution:** Use Docker deployment instead of Python runtime, or ensure system packages are pre-installed.
+
+2. **Import Errors**
 
    - Run `python test_deployment.py` to check all dependencies
    - Ensure all packages in `requirements.txt` are compatible
 
-2. **FFmpeg Not Found**
+3. **FFmpeg Not Found**
 
-   - The build script installs FFmpeg both via apt and downloads a binary
+   - The Dockerfile installs FFmpeg explicitly
    - Check if FFmpeg is in PATH: `which ffmpeg`
+   - Use the health check endpoint to verify system status
 
-3. **Whisper Not Working**
+4. **Whisper Not Working**
 
    - Whisper requires significant memory and CPU
    - Consider using a larger instance on Render
    - The app falls back to chunk-based transcription if Whisper fails
 
-4. **Audio Processing Fails**
+5. **Audio Processing Fails**
    - Check if audio libraries are installed
    - Verify FFmpeg can process M4A files
+   - Check the application logs for detailed error messages
 
 ### Testing Locally
 
@@ -155,3 +191,11 @@ The application uses OpenAI Whisper with the following settings:
 - **Word Timestamps**: Enabled for precise subtitle timing
 - **Output Format**: JSON for detailed transcription data
 - **Fallback**: Chunk-based transcription if Whisper fails
+
+## Deployment Status Monitoring
+
+The application includes built-in health checks:
+
+- **Health endpoint**: `/health` - Returns system status and dependency availability
+- **Root endpoint**: `/` - Shows dependency status on the landing page
+- **Automatic dependency checking**: Validates FFmpeg and Whisper availability at startup

@@ -21,6 +21,34 @@ import time
 import asyncio
 from pathlib import Path
 
+# Check for required system dependencies
+def check_dependencies():
+    """Check if required system dependencies are available"""
+    missing_deps = []
+    
+    # Check FFmpeg
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        missing_deps.append('ffmpeg')
+    
+    # Check Whisper CLI
+    try:
+        subprocess.run(['whisper', '--help'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        missing_deps.append('whisper')
+    
+    if missing_deps:
+        print(f"⚠️ Warning: Missing system dependencies: {', '.join(missing_deps)}")
+        print("   The application may not work correctly without these dependencies.")
+        print("   Please ensure they are installed in your deployment environment.")
+        return False
+    
+    return True
+
+# Check dependencies at startup
+dependencies_ok = check_dependencies()
+
 app = FastAPI(
     title="M4A to SRT Converter",
     description="Convert M4A audio files to SRT subtitles using OpenAI Whisper",
@@ -358,15 +386,18 @@ async def process_audio(job_id: str, file_path: str, max_words: int):
 
 @app.get("/")
 async def index():
-    return """
+    dependency_status = "✅ All dependencies available" if dependencies_ok else "⚠️ Some dependencies missing"
+    
+    return f"""
     <h1>🎵 M4A to SRT Converter API (FastAPI + Whisper)</h1>
     <p>Convert M4A audio files to SRT subtitle format using OpenAI Whisper</p>
+    <p><strong>System Status:</strong> {dependency_status}</p>
     <div style="margin: 20px 0;">
         <h3>Available Endpoints:</h3>
         <ul style="text-align: left; max-width: 400px; margin: 0 auto;">
             <li><strong>POST /upload</strong> - Upload M4A file for conversion</li>
-            <li><strong>GET /status/{job_id}</strong> - Check processing status</li>
-            <li><strong>GET /download/{job_id}</strong> - Download converted SRT file</li>
+            <li><strong>GET /status/{{job_id}}</strong> - Check processing status</li>
+            <li><strong>GET /download/{{job_id}}</strong> - Download converted SRT file</li>
             <li><strong>GET /health</strong> - Service health check</li>
             <li><strong>GET /docs</strong> - Interactive API documentation</li>
         </ul>
@@ -380,8 +411,9 @@ async def index():
 @app.get("/health")
 async def health_check():
     return {
-        'status': 'healthy',
+        'status': 'healthy' if dependencies_ok else 'degraded',
         'service': 'M4A to SRT Converter (FastAPI + Whisper)',
+        'dependencies_ok': dependencies_ok,
         'timestamp': time.time()
     }
 
