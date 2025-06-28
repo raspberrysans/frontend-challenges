@@ -62,6 +62,7 @@ If you encounter read-only filesystem issues, use the provided Dockerfile:
    - Explicit system dependency installation
    - Consistent environment across deployments
    - No read-only filesystem issues
+   - Proper Rust toolchain installation
 
 #### Option 2: Manual System Dependencies
 
@@ -85,7 +86,20 @@ The `build.sh` script performs the following:
 
 ### Common Issues
 
-1. **Read-only Filesystem Error**
+1. **Rust Compilation Error**
+
+   ```
+   error: failed to create directory `/usr/local/cargo/registry/cache/index.crates.io-1949cf8c6b5b557f`
+   Caused by: Read-only file system (os error 30)
+   ```
+
+   **Solutions:**
+
+   - **Use Docker deployment** (recommended) - includes Rust toolchain
+   - **Use fallback app** - `app_fallback.py` works without Whisper
+   - **Updated build script** - sets proper environment variables for Rust
+
+2. **Read-only Filesystem Error**
 
    ```
    E: List directory /var/lib/apt/lists/partial is missing. - Acquire (30: Read-only file system)
@@ -93,27 +107,50 @@ The `build.sh` script performs the following:
 
    **Solution:** Use Docker deployment instead of Python runtime, or ensure system packages are pre-installed.
 
-2. **Import Errors**
+3. **Import Errors**
 
    - Run `python test_deployment.py` to check all dependencies
    - Ensure all packages in `requirements.txt` are compatible
 
-3. **FFmpeg Not Found**
+4. **FFmpeg Not Found**
 
    - The Dockerfile installs FFmpeg explicitly
    - Check if FFmpeg is in PATH: `which ffmpeg`
    - Use the health check endpoint to verify system status
 
-4. **Whisper Not Working**
+5. **Whisper Not Working**
 
    - Whisper requires significant memory and CPU
    - Consider using a larger instance on Render
    - The app falls back to chunk-based transcription if Whisper fails
 
-5. **Audio Processing Fails**
+6. **Audio Processing Fails**
    - Check if audio libraries are installed
    - Verify FFmpeg can process M4A files
    - Check the application logs for detailed error messages
+
+### Deployment Options for Rust Issues
+
+#### Option A: Docker Deployment (Best)
+
+```bash
+# Use the provided Dockerfile
+# Includes Rust toolchain and all dependencies
+```
+
+#### Option B: Fallback App
+
+```bash
+# Use app_fallback.py instead of app.py
+# Works without Whisper if installation fails
+```
+
+#### Option C: Simplified Requirements
+
+```bash
+# Use requirements-simple.txt
+# Pre-compiled packages only
+```
 
 ### Testing Locally
 
@@ -199,3 +236,13 @@ The application includes built-in health checks:
 - **Health endpoint**: `/health` - Returns system status and dependency availability
 - **Root endpoint**: `/` - Shows dependency status on the landing page
 - **Automatic dependency checking**: Validates FFmpeg and Whisper availability at startup
+
+## Files Overview
+
+- `app.py` - Main FastAPI application with Whisper integration
+- `app_fallback.py` - Fallback version that works without Whisper
+- `requirements.txt` - Main requirements with specific versions
+- `requirements-simple.txt` - Simplified requirements (pre-compiled only)
+- `Dockerfile` - Docker deployment with Rust toolchain
+- `build.sh` - Build script with Rust environment setup
+- `render.yaml` - Render deployment configuration

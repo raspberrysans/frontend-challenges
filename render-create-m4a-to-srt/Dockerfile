@@ -4,7 +4,7 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including FFmpeg
+# Install system dependencies including FFmpeg and Rust toolchain
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libavcodec-extra \
@@ -14,14 +14,24 @@ RUN apt-get update && apt-get install -y \
     libswscale-dev \
     pkg-config \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust (needed for some Python packages)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Set environment variables for Rust/Cargo
+ENV CARGO_HOME="/app/.cargo"
+ENV RUSTUP_HOME="/app/.rustup"
+ENV PIP_CACHE_DIR="/tmp/pip-cache"
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy application code
 COPY . .

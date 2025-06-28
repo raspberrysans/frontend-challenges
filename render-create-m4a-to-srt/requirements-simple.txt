@@ -6,18 +6,18 @@ pydantic==2.5.0
 # Audio processing
 pydub==0.25.1
 
-# PyTorch (pre-compiled wheels)
+# PyTorch (CPU-only, pre-compiled)
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==2.1.0+cpu
 torchaudio==2.1.0+cpu
 
-# Whisper (use specific version to avoid compilation issues)
+# Whisper (specific version)
 openai-whisper==20231117
 
-# Additional dependencies (pre-compiled)
+# Pre-compiled dependencies
 numpy==1.24.3
 ffmpeg-python==0.2.0
 
 # Utilities
 requests==2.31.0
-python-multipart==0.0.6
+python-multipart==0.0.6 

@@ -6,6 +6,15 @@ set -e  # Exit on any error
 
 echo "🚀 Starting build process for M4A to SRT Converter..."
 
+# Set environment variables to handle read-only filesystem issues
+export CARGO_HOME="/tmp/cargo"
+export RUSTUP_HOME="/tmp/rustup"
+export PIP_CACHE_DIR="/tmp/pip-cache"
+export MATURIN_CACHE_DIR="/tmp/maturin-cache"
+
+# Create temporary directories for Rust/Cargo
+mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$PIP_CACHE_DIR" "$MATURIN_CACHE_DIR"
+
 # Check if we're in a containerized environment
 if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
     echo "📦 Containerized environment detected"
@@ -36,9 +45,9 @@ fi
 echo "🐍 Upgrading pip..."
 python -m pip install --upgrade pip
 
-# Install Python packages
+# Install Python packages with specific flags to avoid compilation issues
 echo "📚 Installing Python packages..."
-pip install -r requirements.txt
+pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Create necessary directories
 echo "📁 Creating necessary directories..."
