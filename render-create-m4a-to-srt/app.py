@@ -1,38 +1,67 @@
 #!/usr/bin/env python3
 """
-M4A to SRT Converter - Simplified Production Version
-Flask web service for converting M4A audio files to SRT subtitles
+M4A to SRT Converter - FastAPI Version with OpenAI Whisper
+FastAPI web service for converting M4A audio files to SRT subtitles using Whisper
 """
 
-from flask import Flask, request, Response, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 import os
 import tempfile
 import uuid
 from datetime import timedelta
-import speech_recognition as sr
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 import subprocess
 import json
-import threading
 import time
-from werkzeug.utils import secure_filename
+import asyncio
+from pathlib import Path
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI(
+    title="M4A to SRT Converter",
+    description="Convert M4A audio files to SRT subtitles using OpenAI Whisper",
+    version="2.0.0"
+)
 
-# Store processing status
-processing_status = {}
-completed_files = {}
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class SimpleM4AToSRTConverter:
-    def __init__(self, max_words=8):
+# Store processing status and completed files
+processing_status: Dict[str, Dict[str, Any]] = {}
+completed_files: Dict[str, Dict[str, Any]] = {}
+
+class ConversionRequest(BaseModel):
+    max_words: int = 8
+
+class StatusResponse(BaseModel):
+    status: str
+    progress: Optional[str] = None
+    message: Optional[str] = None
+    subtitle_count: Optional[int] = None
+    duration: Optional[float] = None
+
+class UploadResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+    file_size_mb: float
+
+class WhisperM4AToSRTConverter:
+    def __init__(self, max_words: int = 8):
         self.max_words = max_words
-        self.recognizer = sr.Recognizer()
         
-    def convert_m4a_to_wav(self, m4a_path):
-        """Convert M4A to WAV for speech recognition"""
+    def convert_m4a_to_wav(self, m4a_path: str) -> tuple[str, float]:
+        """Convert M4A to WAV for processing"""
         print("Converting M4A to WAV...")
         try:
             audio = AudioSegment.from_file(m4a_path, format="m4a")
@@ -45,13 +74,77 @@ class SimpleM4AToSRTConverter:
             print(f"Error converting M4A to WAV: {e}")
             raise
     
-    def transcribe_audio(self, wav_path):
-        """Transcribe audio using SpeechRecognition (simplified)"""
-        print("Transcribing audio with SpeechRecognition...")
+    def transcribe_with_whisper(self, audio_path: str) -> list[Dict[str, Any]]:
+        """Use OpenAI Whisper for transcription with accurate timestamps"""
+        print("Transcribing audio with Whisper...")
+        
+        try:
+            # Use whisper command line tool with word-level timestamps
+            temp_dir = tempfile.mkdtemp()
+            result = subprocess.run([
+                'whisper', audio_path, 
+                '--model', 'base',
+                '--output_format', 'json',
+                '--word_timestamps', 'True',
+                '--output_dir', temp_dir
+            ], capture_output=True, text=True, check=True)
+            
+            # Find the output JSON file
+            base_name = Path(audio_path).stem
+            json_path = Path(temp_dir) / f"{base_name}.json"
+            
+            if json_path.exists():
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    whisper_result = json.load(f)
+                
+                # Extract word-level timestamps if available
+                words_with_timing = []
+                for segment in whisper_result.get('segments', []):
+                    if 'words' in segment:
+                        for word_info in segment['words']:
+                            words_with_timing.append({
+                                'word': word_info['word'].strip(),
+                                'start': word_info['start'],
+                                'end': word_info['end']
+                            })
+                    else:
+                        # Fallback to segment-level timing
+                        segment_words = segment['text'].strip().split()
+                        if segment_words:
+                            word_duration = (segment['end'] - segment['start']) / len(segment_words)
+                            for i, word in enumerate(segment_words):
+                                words_with_timing.append({
+                                    'word': word,
+                                    'start': segment['start'] + (i * word_duration),
+                                    'end': segment['start'] + ((i + 1) * word_duration)
+                                })
+                
+                # Clean up
+                try:
+                    json_path.unlink()
+                    Path(temp_dir).rmdir()
+                except:
+                    pass
+                
+                return words_with_timing
+            else:
+                raise FileNotFoundError("Whisper output file not found")
+                
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print(f"Whisper transcription failed: {e}")
+            # Fallback to simpler transcription method
+            return self.transcribe_audio_fallback(audio_path)
+        except Exception as e:
+            print(f"Unexpected error in Whisper transcription: {e}")
+            return self.transcribe_audio_fallback(audio_path)
+    
+    def transcribe_audio_fallback(self, audio_path: str) -> list[Dict[str, Any]]:
+        """Fallback transcription using audio segmentation"""
+        print("Using fallback transcription method...")
         
         try:
             # Load audio file
-            audio = AudioSegment.from_wav(wav_path)
+            audio = AudioSegment.from_file(audio_path)
             
             # Split audio on silence to get chunks
             chunks = split_on_silence(
@@ -71,36 +164,16 @@ class SimpleM4AToSRTConverter:
                 print(f"Processing chunk {i+1}/{len(chunks)}")
                 
                 # Limit number of chunks to prevent excessive processing time
-                if i > 10:  # Reduced for production
+                if i > 15:  # Increased limit for fallback
                     break
                 
                 chunk_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                 chunk.export(chunk_path.name, format="wav")
                 
                 try:
-                    with sr.AudioFile(chunk_path.name) as source:
-                        # Adjust for ambient noise
-                        self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                        audio_data = self.recognizer.record(source)
-                        try:
-                            text = self.recognizer.recognize_google(audio_data)
-                            if text.strip():
-                                chunk_duration = len(chunk) / 1000.0
-                                words = text.split()
-                                word_duration = chunk_duration / len(words) if words else 0
-                                
-                                for j, word in enumerate(words):
-                                    words_with_timing.append({
-                                        'word': word,
-                                        'start': current_time + (j * word_duration),
-                                        'end': current_time + ((j + 1) * word_duration)
-                                    })
-                        except sr.UnknownValueError:
-                            print(f"Could not understand chunk {i+1}")
-                        except sr.RequestError as e:
-                            print(f"Error with speech recognition: {e}")
-                            # Continue with other chunks
-                            pass
+                    # Use whisper on individual chunks as fallback
+                    chunk_words = self.transcribe_chunk_with_whisper(chunk_path.name, current_time)
+                    words_with_timing.extend(chunk_words)
                 except Exception as e:
                     print(f"Error processing chunk {i+1}: {e}")
                 finally:
@@ -113,10 +186,56 @@ class SimpleM4AToSRTConverter:
             return words_with_timing
             
         except Exception as e:
-            print(f"Transcription failed: {e}")
+            print(f"Fallback transcription failed: {e}")
             return []
     
-    def group_words_into_subtitles(self, words_with_timing):
+    def transcribe_chunk_with_whisper(self, chunk_path: str, offset_time: float) -> list[Dict[str, Any]]:
+        """Transcribe a single chunk with Whisper"""
+        try:
+            temp_dir = tempfile.mkdtemp()
+            result = subprocess.run([
+                'whisper', chunk_path, 
+                '--model', 'tiny',  # Use smaller model for chunks
+                '--output_format', 'json',
+                '--output_dir', temp_dir
+            ], capture_output=True, text=True, check=True)
+            
+            # Find the output JSON file
+            base_name = Path(chunk_path).stem
+            json_path = Path(temp_dir) / f"{base_name}.json"
+            
+            if json_path.exists():
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    whisper_result = json.load(f)
+                
+                words_with_timing = []
+                for segment in whisper_result.get('segments', []):
+                    segment_words = segment['text'].strip().split()
+                    if segment_words:
+                        word_duration = (segment['end'] - segment['start']) / len(segment_words)
+                        for i, word in enumerate(segment_words):
+                            words_with_timing.append({
+                                'word': word,
+                                'start': offset_time + segment['start'] + (i * word_duration),
+                                'end': offset_time + segment['start'] + ((i + 1) * word_duration)
+                            })
+                
+                # Clean up
+                try:
+                    json_path.unlink()
+                    Path(temp_dir).rmdir()
+                except:
+                    pass
+                
+                return words_with_timing
+            else:
+                return []
+                
+        except Exception as e:
+            print(f"Chunk transcription failed: {e}")
+            return []
+    
+    def group_words_into_subtitles(self, words_with_timing: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         """Group words into subtitles based on max_words parameter"""
         if not words_with_timing:
             return []
@@ -156,7 +275,7 @@ class SimpleM4AToSRTConverter:
         
         return subtitles
     
-    def seconds_to_srt_time(self, seconds):
+    def seconds_to_srt_time(self, seconds: float) -> str:
         """Convert seconds to SRT time format (HH:MM:SS,mmm)"""
         td = timedelta(seconds=seconds)
         total_seconds = int(td.total_seconds())
@@ -167,7 +286,7 @@ class SimpleM4AToSRTConverter:
         
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
     
-    def create_srt_content(self, subtitles):
+    def create_srt_content(self, subtitles: list[Dict[str, Any]]) -> str:
         """Create SRT content as string"""
         srt_content = ""
         
@@ -181,21 +300,21 @@ class SimpleM4AToSRTConverter:
         
         return srt_content
 
-def process_audio(job_id, file_path, max_words):
-    """Process audio file in background thread"""
+async def process_audio(job_id: str, file_path: str, max_words: int):
+    """Process audio file in background"""
     global processing_status, completed_files
     
     try:
         processing_status[job_id] = {"status": "processing", "progress": "Starting conversion..."}
         
-        converter = SimpleM4AToSRTConverter(max_words=max_words)
+        converter = WhisperM4AToSRTConverter(max_words=max_words)
         
         processing_status[job_id]["progress"] = "Converting audio format..."
         temp_wav_path, duration = converter.convert_m4a_to_wav(file_path)
         
         try:
-            processing_status[job_id]["progress"] = "Transcribing audio..."
-            words_with_timing = converter.transcribe_audio(temp_wav_path)
+            processing_status[job_id]["progress"] = "Transcribing audio with Whisper..."
+            words_with_timing = converter.transcribe_with_whisper(file_path)
             
             if not words_with_timing:
                 processing_status[job_id] = {"status": "error", "message": "No speech detected in audio file"}
@@ -237,11 +356,11 @@ def process_audio(job_id, file_path, max_words):
         except:
             pass
 
-@app.route('/')
-def index():
-    return '''
-    <h1>🎵 M4A to SRT Converter API (Simplified)</h1>
-    <p>Convert M4A audio files to SRT subtitle format</p>
+@app.get("/")
+async def index():
+    return """
+    <h1>🎵 M4A to SRT Converter API (FastAPI + Whisper)</h1>
+    <p>Convert M4A audio files to SRT subtitle format using OpenAI Whisper</p>
     <div style="margin: 20px 0;">
         <h3>Available Endpoints:</h3>
         <ul style="text-align: left; max-width: 400px; margin: 0 auto;">
@@ -249,102 +368,93 @@ def index():
             <li><strong>GET /status/{job_id}</strong> - Check processing status</li>
             <li><strong>GET /download/{job_id}</strong> - Download converted SRT file</li>
             <li><strong>GET /health</strong> - Service health check</li>
+            <li><strong>GET /docs</strong> - Interactive API documentation</li>
         </ul>
     </div>
     <div style="margin-top: 30px; font-size: 0.9em; color: #666;">
         <p>Max file size: 50MB | Supported format: M4A</p>
-        <p>Uses SpeechRecognition for transcription</p>
+        <p>Uses OpenAI Whisper for high-quality transcription</p>
     </div>
-    '''
+    """
 
-@app.route('/health')
-def health_check():
-    return jsonify({
+@app.get("/health")
+async def health_check():
+    return {
         'status': 'healthy',
-        'service': 'M4A to SRT Converter (Simplified)',
+        'service': 'M4A to SRT Converter (FastAPI + Whisper)',
         'timestamp': time.time()
-    })
+    }
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+@app.post("/upload", response_model=UploadResponse)
+async def upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    max_words: int = Form(8)
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
     
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    # Check file size (limit to 50MB for simplified version)
-    file.seek(0, 2)  # Seek to end
-    file_size = file.tell()
-    file.seek(0)  # Reset to beginning
+    # Check file size (limit to 50MB)
+    file_size = 0
+    content = await file.read()
+    file_size = len(content)
     
     if file_size > 50 * 1024 * 1024:  # 50MB limit
-        return jsonify({'error': 'File size exceeds 50MB limit'}), 400
-    
-    # Get parameters
-    max_words = int(request.form.get('max_words', 8))
+        raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
     
     # Validate parameters
     if max_words < 1 or max_words > 20:
-        return jsonify({'error': 'max_words must be between 1 and 20'}), 400
+        raise HTTPException(status_code=400, detail="max_words must be between 1 and 20")
     
     # Check file extension
     if not file.filename.lower().endswith('.m4a'):
-        return jsonify({'error': 'Only M4A files are supported'}), 400
+        raise HTTPException(status_code=400, detail="Only M4A files are supported")
     
     # Save uploaded file
     job_id = str(uuid.uuid4())
-    filename = secure_filename(file.filename)
-    temp_path = os.path.join(tempfile.gettempdir(), f"{job_id}_{filename}")
+    temp_path = os.path.join(tempfile.gettempdir(), f"{job_id}_{file.filename}")
     
     try:
-        file.save(temp_path)
+        with open(temp_path, "wb") as f:
+            f.write(content)
     except Exception as e:
-        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
     # Start background processing
-    thread = threading.Thread(
-        target=process_audio, 
-        args=(job_id, temp_path, max_words)
+    background_tasks.add_task(process_audio, job_id, temp_path, max_words)
+    
+    return UploadResponse(
+        job_id=job_id,
+        status="processing",
+        message="File uploaded successfully, processing started",
+        file_size_mb=round(file_size / 1024 / 1024, 2)
     )
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({
-        'job_id': job_id,
-        'status': 'processing',
-        'message': 'File uploaded successfully, processing started',
-        'file_size_mb': round(file_size / 1024 / 1024, 2)
-    })
 
-@app.route('/status/<job_id>')
-def get_status(job_id):
+@app.get("/status/{job_id}", response_model=StatusResponse)
+async def get_status(job_id: str):
     if job_id not in processing_status:
-        return jsonify({'error': 'Job not found'}), 404
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    return jsonify(processing_status[job_id])
+    return processing_status[job_id]
 
-@app.route('/download/<job_id>')
-def download_file(job_id):
+@app.get("/download/{job_id}")
+async def download_file(job_id: str):
     if job_id not in completed_files:
-        return jsonify({'error': 'File not ready or job not found'}), 404
+        raise HTTPException(status_code=404, detail="File not ready or job not found")
     
     file_data = completed_files[job_id]
     
     # Create response with SRT content
-    response = Response(
-        file_data['srt_content'],
-        mimetype='text/plain',
+    return Response(
+        content=file_data['srt_content'],
+        media_type='text/plain',
         headers={
             'Content-Disposition': f'attachment; filename=subtitles_{job_id}.srt'
         }
     )
-    
-    return response
 
 # Clean up old files periodically
-def cleanup_old_files():
+async def cleanup_old_files():
     """Remove files older than 1 hour"""
     current_time = time.time()
     to_remove = []
@@ -357,16 +467,17 @@ def cleanup_old_files():
         completed_files.pop(job_id, None)
         processing_status.pop(job_id, None)
 
-# Run cleanup every 30 minutes
-def periodic_cleanup():
-    while True:
-        time.sleep(1800)  # 30 minutes
-        cleanup_old_files()
-
-cleanup_thread = threading.Thread(target=periodic_cleanup)
-cleanup_thread.daemon = True
-cleanup_thread.start()
+@app.on_event("startup")
+async def startup_event():
+    """Start background cleanup task"""
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(1800)  # 30 minutes
+            await cleanup_old_files()
+    
+    asyncio.create_task(periodic_cleanup())
 
 if __name__ == '__main__':
+    import uvicorn
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    uvicorn.run(app, host='0.0.0.0', port=port) 

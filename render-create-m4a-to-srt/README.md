@@ -2,16 +2,17 @@
 
 # M4A to SRT Converter - Render Deployment
 
-A Flask web service for converting M4A audio files to SRT subtitle format using OpenAI Whisper and SpeechRecognition.
+A FastAPI web service for converting M4A audio files to SRT subtitle format using OpenAI Whisper.
 
 ## Features
 
 - Convert M4A audio files to SRT subtitles
-- Uses OpenAI Whisper for accurate transcription with timestamps
-- Fallback to Google Speech Recognition if Whisper fails
+- Uses OpenAI Whisper for high-quality transcription with word-level timestamps
+- Fallback transcription method using audio segmentation
 - Customizable subtitle length (max words per subtitle)
 - RESTful API with status tracking
 - Background processing with job management
+- Interactive API documentation (Swagger UI)
 
 ## API Endpoints
 
@@ -19,6 +20,7 @@ A Flask web service for converting M4A audio files to SRT subtitle format using 
 - `GET /status/{job_id}` - Check processing status
 - `GET /download/{job_id}` - Download converted SRT file
 - `GET /health` - Service health check
+- `GET /docs` - Interactive API documentation
 
 ## Deployment on Render
 
@@ -34,7 +36,7 @@ A Flask web service for converting M4A audio files to SRT subtitle format using 
    - Connect your Git repository
    - Choose Python as the runtime
    - Set build command: `./build.sh`
-   - Set start command: `gunicorn app:app`
+   - Set start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
 
 2. **Environment Variables** (optional)
 
@@ -71,10 +73,10 @@ The `build.sh` script performs the following:
 
    - Whisper requires significant memory and CPU
    - Consider using a larger instance on Render
-   - The app falls back to SpeechRecognition if Whisper fails
+   - The app falls back to chunk-based transcription if Whisper fails
 
 4. **Audio Processing Fails**
-   - Check if PyAudio and audio libraries are installed
+   - Check if audio libraries are installed
    - Verify FFmpeg can process M4A files
 
 ### Testing Locally
@@ -108,25 +110,26 @@ The `build.sh` script performs the following:
 
 ### File Size Limits
 
-- Maximum file size: 100MB (Render free tier limit)
+- Maximum file size: 50MB
 - Supported format: M4A only
 - Processing time varies with audio length
 
 ## Architecture
 
-- **Flask**: Web framework
-- **Gunicorn**: WSGI server for production
-- **OpenAI Whisper**: Primary transcription engine
-- **SpeechRecognition**: Fallback transcription
-- **pydub**: Audio processing
+- **FastAPI**: Modern, fast web framework with automatic API documentation
+- **Uvicorn**: ASGI server for production
+- **OpenAI Whisper**: Primary transcription engine with word-level timestamps
+- **pydub**: Audio processing and format conversion
 - **FFmpeg**: Audio format conversion
+- **Pydantic**: Data validation and serialization
 
 ## Performance Considerations
 
 - Whisper processing is CPU and memory intensive
 - Consider using Render's paid tiers for better performance
-- Audio files are processed in background threads
+- Audio files are processed in background tasks
 - Temporary files are automatically cleaned up
+- Uses async/await for better concurrency
 
 ## Security
 
@@ -134,3 +137,21 @@ The `build.sh` script performs the following:
 - Temporary files are cleaned up after processing
 - No persistent storage of uploaded files
 - CORS enabled for web client access
+- Input validation using Pydantic models
+
+## API Documentation
+
+FastAPI automatically generates interactive API documentation:
+
+- **Swagger UI**: Available at `/docs`
+- **ReDoc**: Available at `/redoc`
+- **OpenAPI Schema**: Available at `/openapi.json`
+
+## Whisper Configuration
+
+The application uses OpenAI Whisper with the following settings:
+
+- **Model**: `base` (good balance of speed and accuracy)
+- **Word Timestamps**: Enabled for precise subtitle timing
+- **Output Format**: JSON for detailed transcription data
+- **Fallback**: Chunk-based transcription if Whisper fails

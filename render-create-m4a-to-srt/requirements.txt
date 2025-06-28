@@ -1,13 +1,12 @@
 # Core dependencies
-Flask==2.3.3
-Flask-CORS==4.0.0
-gunicorn==21.2.0
-Werkzeug==2.3.7
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
 
 # Audio processing
 pydub==0.25.1
-SpeechRecognition==3.10.0
+openai-whisper==20231117
 
 # Utilities
-requests==2.31.0 
-standard-aifc
+requests==2.31.0
+python-multipart==0.0.6

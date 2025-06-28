@@ -1,147 +1,86 @@
 #!/usr/bin/env python3
 """
-Test script to verify deployment setup
-Run this to check if all dependencies and configurations are working
+Test script to verify deployment environment
+Checks all dependencies and basic functionality
 """
 
 import sys
-import os
 import subprocess
+import importlib
 
-def test_imports():
-    """Test if all required modules can be imported"""
-    print("🔍 Testing imports...")
-    
-    modules = [
-        'flask',
-        'flask_cors', 
-        'werkzeug',
-        'speech_recognition',
-        'pydub',
-        'torch',
-        'whisper',
-        'numpy',
-        'transformers'
-    ]
-    
-    failed_imports = []
-    
-    for module in modules:
-        try:
-            __import__(module)
-            print(f"✅ {module}")
-        except ImportError as e:
-            print(f"❌ {module}: {e}")
-            failed_imports.append(module)
-    
-    return failed_imports
-
-def test_ffmpeg():
-    """Test FFmpeg availability"""
-    print("\n🔍 Testing FFmpeg...")
-    
-    # Check system ffmpeg
+def test_import(module_name, package_name=None):
+    """Test if a module can be imported"""
     try:
-        result = subprocess.run(['ffmpeg', '-version'], 
-                              capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            print("✅ System FFmpeg available")
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    
-    # Check custom ffmpeg
-    home_dir = os.path.expanduser("~")
-    ffmpeg_path = os.path.join(home_dir, "bin", "ffmpeg")
-    
-    if os.path.exists(ffmpeg_path):
-        try:
-            result = subprocess.run([ffmpeg_path, '-version'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                print(f"✅ Custom FFmpeg available at {ffmpeg_path}")
-                return True
-        except subprocess.TimeoutExpired:
-            pass
-    
-    print("❌ No FFmpeg found")
-    return False
+        importlib.import_module(module_name)
+        print(f"✅ {package_name or module_name} - OK")
+        return True
+    except ImportError as e:
+        print(f"❌ {package_name or module_name} - FAILED: {e}")
+        return False
 
-def test_whisper():
-    """Test Whisper availability"""
-    print("\n🔍 Testing Whisper...")
-    
+def test_command(command, description):
+    """Test if a command is available"""
     try:
-        result = subprocess.run(['whisper', '--help'], 
-                              capture_output=True, text=True, timeout=10)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
-            print("✅ Whisper CLI available")
+            print(f"✅ {description} - OK")
             return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    
-    print("❌ Whisper CLI not found")
-    return False
-
-def test_environment():
-    """Test environment variables and paths"""
-    print("\n🔍 Testing environment...")
-    
-    # Check PATH
-    path = os.environ.get('PATH', '')
-    home_dir = os.path.expanduser("~")
-    bin_path = os.path.join(home_dir, "bin")
-    
-    if bin_path in path:
-        print(f"✅ Custom bin path in PATH: {bin_path}")
-    else:
-        print(f"⚠️ Custom bin path not in PATH: {bin_path}")
-    
-    # Check PORT
-    port = os.environ.get('PORT', 'Not set')
-    print(f"PORT: {port}")
-    
-    # Check Python version
-    print(f"Python version: {sys.version}")
+        else:
+            print(f"❌ {description} - FAILED: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"❌ {description} - FAILED: {e}")
+        return False
 
 def main():
-    print("🚀 Deployment Test Script")
-    print("=" * 50)
+    print("🧪 Testing M4A to SRT Converter Deployment Environment")
+    print("=" * 60)
     
-    # Test environment
-    test_environment()
+    # Test Python version
+    print(f"🐍 Python version: {sys.version}")
     
-    # Test imports
-    failed_imports = test_imports()
+    # Test core dependencies
+    print("\n📚 Testing Core Dependencies:")
+    core_deps = [
+        ("fastapi", "FastAPI"),
+        ("uvicorn", "Uvicorn"),
+        ("pydantic", "Pydantic"),
+        ("pydub", "pydub"),
+        ("openai_whisper", "OpenAI Whisper"),
+        ("requests", "requests"),
+    ]
     
-    # Test external tools
-    ffmpeg_ok = test_ffmpeg()
-    whisper_ok = test_whisper()
+    core_ok = all(test_import(module, name) for module, name in core_deps)
+    
+    # Test system commands
+    print("\n🔧 Testing System Commands:")
+    system_ok = all([
+        test_command(["ffmpeg", "-version"], "FFmpeg"),
+        test_command(["ffprobe", "-version"], "FFprobe"),
+    ])
+    
+    # Test Whisper installation
+    print("\n🎤 Testing Whisper Installation:")
+    whisper_ok = test_command(["whisper", "--help"], "Whisper CLI")
+    
+    # Test application import
+    print("\n🚀 Testing Application:")
+    app_ok = test_import("app", "Application Module")
     
     # Summary
-    print("\n" + "=" * 50)
-    print("📊 SUMMARY")
-    print("=" * 50)
+    print("\n" + "=" * 60)
+    print("📊 Test Summary:")
     
-    if failed_imports:
-        print(f"❌ Failed imports: {', '.join(failed_imports)}")
+    if all([core_ok, system_ok, whisper_ok, app_ok]):
+        print("🎉 All tests passed! Deployment environment is ready.")
+        print("\n🚀 You can now start the application with:")
+        print("   python app.py")
+        print("   or")
+        print("   uvicorn app:app --host 0.0.0.0 --port 10000")
+        return 0
     else:
-        print("✅ All imports successful")
-    
-    if ffmpeg_ok:
-        print("✅ FFmpeg available")
-    else:
-        print("❌ FFmpeg not available")
-    
-    if whisper_ok:
-        print("✅ Whisper available")
-    else:
-        print("❌ Whisper not available")
-    
-    if not failed_imports and ffmpeg_ok and whisper_ok:
-        print("\n🎉 All tests passed! Deployment should work.")
-    else:
-        print("\n⚠️ Some tests failed. Check the issues above.")
+        print("❌ Some tests failed. Please check the errors above.")
+        return 1
 
 if __name__ == "__main__":
-    main() 
+    sys.exit(main()) 
