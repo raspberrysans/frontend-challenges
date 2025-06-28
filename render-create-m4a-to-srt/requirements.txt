@@ -9,7 +9,7 @@ pydub==0.25.1
 # PyTorch (pre-compiled wheels)
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==2.7.1
-torchaudio==2.1.0+cpu
+torchaudio==2.7.1
 
 # Whisper (use specific version to avoid compilation issues)
 openai-whisper==20231117
