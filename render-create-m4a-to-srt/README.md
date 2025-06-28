@@ -28,6 +28,7 @@ A FastAPI web service for converting M4A audio files to SRT subtitle format usin
 
 - Render account
 - Git repository with this code
+- Python 3.11.9 (specified in render.yaml)
 
 ### Deployment Steps
 
@@ -41,6 +42,7 @@ A FastAPI web service for converting M4A audio files to SRT subtitle format usin
 2. **Environment Variables** (optional)
 
    - `PORT`: Port number (Render sets this automatically)
+   - `PYTHON_VERSION`: 3.11.9 (specified in render.yaml)
 
 3. **Deploy**
    - Render will automatically build and deploy your service
@@ -63,6 +65,7 @@ If you encounter read-only filesystem issues, use the provided Dockerfile:
    - Consistent environment across deployments
    - No read-only filesystem issues
    - Proper Rust toolchain installation
+   - Uses Python 3.11.9
 
 #### Option 2: Manual System Dependencies
 
@@ -111,6 +114,7 @@ The `build.sh` script performs the following:
 
    - Run `python test_deployment.py` to check all dependencies
    - Ensure all packages in `requirements.txt` are compatible
+   - Verify Python 3.11.9 is being used
 
 4. **FFmpeg Not Found**
 
@@ -136,6 +140,7 @@ The `build.sh` script performs the following:
 ```bash
 # Use the provided Dockerfile
 # Includes Rust toolchain and all dependencies
+# Uses Python 3.11.9
 ```
 
 #### Option B: Fallback App
@@ -154,13 +159,23 @@ The `build.sh` script performs the following:
 
 ### Testing Locally
 
-1. Install dependencies:
+1. Install Python 3.11.9:
+
+   ```bash
+   # Using pyenv
+   pyenv install 3.11.9
+   pyenv local 3.11.9
+
+   # Or download from python.org
+   ```
+
+2. Install dependencies:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Install FFmpeg:
+3. Install FFmpeg:
 
    ```bash
    # macOS
@@ -170,13 +185,13 @@ The `build.sh` script performs the following:
    sudo apt-get install ffmpeg
    ```
 
-3. Run the test script:
+4. Run the test script:
 
    ```bash
    python test_deployment.py
    ```
 
-4. Start the server:
+5. Start the server:
    ```bash
    python app.py
    ```
@@ -195,6 +210,7 @@ The `build.sh` script performs the following:
 - **pydub**: Audio processing and format conversion
 - **FFmpeg**: Audio format conversion
 - **Pydantic**: Data validation and serialization
+- **Python**: 3.11.9
 
 ## Performance Considerations
 
@@ -203,6 +219,7 @@ The `build.sh` script performs the following:
 - Audio files are processed in background tasks
 - Temporary files are automatically cleaned up
 - Uses async/await for better concurrency
+- Python 3.11.9 provides better performance than older versions
 
 ## Security
 
@@ -243,6 +260,6 @@ The application includes built-in health checks:
 - `app_fallback.py` - Fallback version that works without Whisper
 - `requirements.txt` - Main requirements with specific versions
 - `requirements-simple.txt` - Simplified requirements (pre-compiled only)
-- `Dockerfile` - Docker deployment with Rust toolchain
+- `Dockerfile` - Docker deployment with Rust toolchain (Python 3.11.9)
 - `build.sh` - Build script with Rust environment setup
-- `render.yaml` - Render deployment configuration
+- `render.yaml` - Render deployment configuration (Python 3.11.9)
